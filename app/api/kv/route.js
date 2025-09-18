@@ -1,26 +1,36 @@
 import { kv } from "@vercel/kv";
-import { NextResponse } from "next/server";
 
-export const runtime = "edge"; // usar KV desde funciones Edge
+export const runtime = "edge";
 
 export async function GET() {
-  const key = "kv:health";
-  const now = Date.now();
+  try {
+    const hasUrl = !!process.env.KV_REST_API_URL;
+    const hasTok = !!process.env.KV_REST_API_TOKEN;
 
-  // 1) Escribir un valor con TTL 60s
-  await kv.set(key, now, { ex: 60 });
+    if (!hasUrl || !hasTok) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Missing KV env vars",
+          env: { KV_REST_API_URL: hasUrl, KV_REST_API_TOKEN: hasTok }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
 
-  // 2) Leerlo de vuelta
-  const readBack = await kv.get(key);
+    const key = "kv:health";
+    const now = Date.now();
+    await kv.set(key, now, { ex: 60 });
+    const readBack = await kv.get(key);
+    const counter = await kv.incr("kv:counter");
 
-  // 3) Incrementar un contador para ver persistencia
-  const counter = await kv.incr("kv:counter");
-
-  return NextResponse.json({
-    ok: true,
-    wrote: now,
-    readBack,
-    counter
-  });
+    return new Response(JSON.stringify({ ok: true, wrote: now, readBack, counter }), {
+      headers: { "content-type": "application/json" },
+    });
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ ok: false, error: String(e) }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  }
 }
-
